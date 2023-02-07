@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"dependentCutting/util"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -15,6 +17,8 @@ const (
 )
 
 var (
+	NotFoundFileError             = errors.New("not found file")
+	SixZExeFile                   string
 	jarFile, jarDir, manifestFile string
 	TargetDirNameSlice            = [...]string{"BOOT-INF", "META-INF", "org", "lib"}
 )
@@ -38,20 +42,33 @@ func finish(err error) {
 	panic(err)
 }
 
-func readAllLine(content []byte) []string {
-	var start = 0
-	var result []string
+// packageManifestFile 打包ManifestFile文件
+func packageManifestFile(params map[string]string) []byte {
+	var buffer bytes.Buffer
 
-	for i, c := range content {
-		if c == '\n' {
-			// start - i
-			v := string(content[start:i])
-			result = append(result, v)
-			start = i
+	for key, value := range params {
+		buffer.WriteString(fmt.Sprintf("%s: %s\n", key, value))
+	}
+
+	return buffer.Bytes()
+}
+
+// unPackageManifestFile 解包ManifestFile文件
+func unPackageManifestFile(content []byte) map[string]string {
+	var paramMap = make(map[string]string)
+
+	allLine := util.ReadAllLine(content)
+
+	for _, line := range allLine {
+		splitArray := strings.Split(line, ":")
+		if len(splitArray) == 2 {
+			key := strings.Trim(strings.Trim(splitArray[0], "\n"), " ")
+			value := strings.Trim(strings.Trim(splitArray[1], "\n"), " ")
+			paramMap[key] = value
 		}
 	}
 
-	return result
+	return paramMap
 }
 
 // handlerManifestFile 处理ManifestFile文件
@@ -68,46 +85,24 @@ func handlerManifestFile() {
 	}
 }
 
-// packageManifestFile 打包ManifestFile文件
-func packageManifestFile(params map[string]string) []byte {
-	var buffer bytes.Buffer
-
-	for key, value := range params {
-		buffer.WriteString(fmt.Sprintf("%s: %s\n", key, value))
-	}
-
-	return buffer.Bytes()
-}
-
-// unPackageManifestFile 解包ManifestFile文件
-func unPackageManifestFile(content []byte) map[string]string {
-	var paramMap = make(map[string]string)
-
-	allLine := readAllLine(content)
-
-	for _, line := range allLine {
-		splitArray := strings.Split(line, ":")
-		if len(splitArray) == 2 {
-			key := strings.Trim(strings.Trim(splitArray[0], "\n"), " ")
-			value := strings.Trim(strings.Trim(splitArray[1], "\n"), " ")
-			paramMap[key] = value
-		}
-	}
-
-	return paramMap
-}
-
 func main() {
-	//if len(os.Args) == 1 {
-	//	panic(NotFoundFileError)
-	//}
-	//
-	//filePath := os.Args[1]
-	//if filePath == "" {
-	//	panic(NotFoundFileError)
-	//}
+	ex, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
 
-	jarFile = "C:\\Users\\Administrator\\Desktop\\1\\2\\Cloud-KernelApp.jar"
+	SixZExeFile = fmt.Sprintf("%s\\7z.exe", filepath.Dir(ex))
+
+	if len(os.Args) == 1 {
+		panic(NotFoundFileError)
+	}
+
+	filePath := os.Args[1]
+	if filePath == "" {
+		panic(NotFoundFileError)
+	}
+
+	jarFile = os.Args[1]
 	index := strings.LastIndex(jarFile, "\\")
 	jarDir = jarFile[:index]
 	jarName := jarFile[index:]
@@ -116,7 +111,7 @@ func main() {
 	fmt.Printf("input file: %s, name: %s, dir: %s\n", jarFile, jarName, jarDir)
 
 	// 检查是否存在冲突目录
-	clearDir([]string{})
+	//clearDir([]string{})
 
 	// 解压jar
 	if err := util.Decompress(jarFile, jarDir); err != nil {
@@ -130,6 +125,23 @@ func main() {
 
 	// 处理manifestFile
 	handlerManifestFile()
+
+	// 打包
+	if err := util.Compress7z(SixZExeFile, func() []string {
+		// []string{"C:\\Users\\Administrator\\Desktop\\1\\BOOT-INF", "C:\\Users\\Administrator\\Desktop\\1\\META-INF", "C:\\Users\\Administrator\\Desktop\\1\\org"}
+		var params []string
+		for _, targetDirName := range TargetDirNameSlice {
+			if targetDirName == "lib" {
+				continue
+			}
+
+			params = append(params, fmt.Sprintf("%s\\%s", jarDir, targetDirName))
+		}
+
+		return params
+	}(), fmt.Sprintf("%s\\dc.jar", jarDir)); err != nil {
+		finish(err)
+	}
 
 	// 收尾清理
 	clearDir([]string{"lib"})

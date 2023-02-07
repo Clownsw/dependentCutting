@@ -5,7 +5,61 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 )
+
+// Compress 压缩ZIP文件夹到targetFile
+func Compress(sourceDirSlice []string, targetFile string) error {
+	_ = os.Remove(targetFile)
+
+	zipFile, err := os.Create(targetFile)
+	if err != nil {
+		return err
+	}
+	defer Close(zipFile)
+
+	zipWriter := zip.NewWriter(zipFile)
+	defer Close(zipWriter)
+
+	for _, sourceDir := range sourceDirSlice {
+		err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+			if path != sourceDir && !info.IsDir() {
+				zipFilePath := path[strings.LastIndex(sourceDir, "\\")+1:]
+
+				fileFd, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+				defer Close(fileFd)
+
+				header, err := zip.FileInfoHeader(info)
+				if err != nil {
+					return err
+				}
+
+				header.Method = zip.Deflate
+				header.Name = zipFilePath
+				headerWriter, err := zipWriter.CreateHeader(header)
+				if err != nil {
+					return err
+				}
+
+				if _, err := io.Copy(headerWriter, fileFd); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 
 // Decompress 解压ZIP文件到targetDir目录
 func Decompress(sourceFile, targetDir string) error {
@@ -15,9 +69,7 @@ func Decompress(sourceFile, targetDir string) error {
 		return err
 	}
 
-	defer func() {
-		_ = reader.Close()
-	}()
+	defer Close(reader)
 
 	for _, file := range reader.File {
 		filePath := fmt.Sprintf("%s\\%s", targetDir, file.Name)
@@ -48,5 +100,18 @@ func Decompress(sourceFile, targetDir string) error {
 		_ = dstFile.Close()
 	}
 
+	return nil
+}
+
+// Compress7z 使用7z ZIP压缩
+func Compress7z(sixZExeFile string, sourceDirSlice []string, targetFile string) error {
+	commandParams := []string{"a", targetFile}
+	commandParams = append(commandParams, sourceDirSlice...)
+
+	cmd := exec.Command(sixZExeFile, commandParams...)
+	_, err := cmd.CombinedOutput()
+	if err != nil {
+		return err
+	}
 	return nil
 }
