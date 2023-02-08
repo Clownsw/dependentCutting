@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -86,19 +85,9 @@ func handlerManifestFile() {
 }
 
 func main() {
-	ex, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-
-	SixZExeFile = fmt.Sprintf("%s\\7z.exe", filepath.Dir(ex))
+	SixZExeFile = fmt.Sprintf("%s\\7z.exe", util.GetCurrentExecuteDir())
 
 	if len(os.Args) == 1 {
-		panic(NotFoundFileError)
-	}
-
-	filePath := os.Args[1]
-	if filePath == "" {
 		panic(NotFoundFileError)
 	}
 
@@ -111,7 +100,7 @@ func main() {
 	fmt.Printf("input file: %s, name: %s, dir: %s\n", jarFile, jarName, jarDir)
 
 	// 检查是否存在冲突目录
-	//clearDir([]string{})
+	clearDir([]string{})
 
 	// 解压jar
 	if err := util.Decompress(jarFile, jarDir); err != nil {
@@ -128,7 +117,6 @@ func main() {
 
 	// 打包
 	if err := util.Compress7z(SixZExeFile, func() []string {
-		// []string{"C:\\Users\\Administrator\\Desktop\\1\\BOOT-INF", "C:\\Users\\Administrator\\Desktop\\1\\META-INF", "C:\\Users\\Administrator\\Desktop\\1\\org"}
 		var params []string
 		for _, targetDirName := range TargetDirNameSlice {
 			if targetDirName == "lib" {
