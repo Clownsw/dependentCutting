@@ -105,10 +105,7 @@ func Decompress(sourceFile, targetDir string) error {
 
 // Compress7z 使用7z ZIP压缩
 func Compress7z(sixZExeFile string, sourceDirSlice []string, targetFile string) error {
-	commandParams := []string{"a", targetFile}
-	commandParams = append(commandParams, sourceDirSlice...)
-
-	cmd := exec.Command(sixZExeFile, commandParams...)
+	cmd := exec.Command(sixZExeFile, append([]string{"a", targetFile}, sourceDirSlice...)...)
 	_, err := cmd.CombinedOutput()
 	if err != nil {
 		return err
