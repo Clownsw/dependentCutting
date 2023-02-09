@@ -5,7 +5,10 @@ import (
 	"dependentCutting/util"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -20,6 +23,8 @@ var (
 	SixZExeFile                   string
 	jarFile, jarDir, manifestFile string
 	TargetDirNameSlice            = [...]string{"BOOT-INF", "META-INF", "org", "lib"}
+	SnowyLibDirName               = "otherLib"
+	snowyLibDir                   string
 )
 
 // clearDir 清理目录中包含在TargetDirNameSlice中的文件夹
@@ -84,6 +89,38 @@ func handlerManifestFile() {
 	}
 }
 
+// handlerSnowyLib 复制以snowy-开头的依赖到单独目录
+func handlerSnowyLib() error {
+	_ = os.RemoveAll(snowyLibDir)
+	if err := os.Mkdir(snowyLibDir, os.FileMode(07777)); err != nil {
+		return err
+	}
+
+	return filepath.Walk(fmt.Sprintf("%s\\lib", jarDir), func(path string, fileInfo fs.FileInfo, err error) error {
+		if !fileInfo.IsDir() && fileInfo.Name()[0:5] == "snowy" {
+			newFileFd, err := os.OpenFile(fmt.Sprintf("%s\\%s\\%s", jarDir, SnowyLibDirName, fileInfo.Name()), os.O_CREATE|os.O_WRONLY, fileInfo.Mode())
+			if err != nil {
+				return err
+			}
+
+			defer util.Close(newFileFd)
+
+			fileFd, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+
+			defer util.Close(fileFd)
+
+			if _, err := io.Copy(newFileFd, fileFd); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
 func main() {
 	SixZExeFile = fmt.Sprintf("%s\\7z.exe", util.GetCurrentExecuteDir())
 
@@ -96,6 +133,7 @@ func main() {
 	jarDir = jarFile[:index]
 	jarName := jarFile[index:]
 	manifestFile = fmt.Sprintf(ManifestFileSuffix, jarDir)
+	snowyLibDir = fmt.Sprintf("%s\\%s", jarDir, SnowyLibDirName)
 
 	fmt.Printf("input file: %s, name: %s, dir: %s\n", jarFile, jarName, jarDir)
 
@@ -109,6 +147,11 @@ func main() {
 
 	// 移动lib
 	if err := os.Rename(fmt.Sprintf(LibDirSuffix, jarDir), fmt.Sprintf("%s\\lib", jarDir)); err != nil {
+		finish(err)
+	}
+
+	// 将snowy-开头的依赖单独复制到otherLib
+	if err := handlerSnowyLib(); err != nil {
 		finish(err)
 	}
 
