@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
+	"dependentCutting/config"
 	"dependentCutting/util"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,32 +12,17 @@ import (
 	"strings"
 )
 
-const (
-	LibDirSuffix       = "%s\\BOOT-INF\\lib"
-	ManifestFileSuffix = "%s\\META-INF\\MANIFEST.MF"
-	MainClass          = "org.springframework.boot.loader.PropertiesLauncher"
-)
-
-var (
-	NotFoundFileError             = errors.New("not found file")
-	SixZExeFile                   string
-	jarFile, jarDir, manifestFile string
-	TargetDirNameSlice            = [...]string{"BOOT-INF", "META-INF", "org", "lib"}
-	SnowyLibDirName               = "otherLib"
-	snowyLibDir                   string
-)
-
 // clearDir 清理目录中包含在TargetDirNameSlice中的文件夹
 func clearDir(excludes []string) {
 b:
-	for _, dirName := range TargetDirNameSlice {
+	for _, dirName := range config.TargetDirNameSlice {
 		for _, exclude := range excludes {
 			if dirName == exclude {
 				continue b
 			}
 		}
 
-		_ = os.RemoveAll(fmt.Sprintf("%s\\%s", jarDir, dirName))
+		_ = os.RemoveAll(util.BuildFilePath(config.FileSplit, config.JarDir, dirName))
 	}
 }
 
@@ -77,30 +62,31 @@ func unPackageManifestFile(content []byte) map[string]string {
 
 // handlerManifestFile 处理ManifestFile文件
 func handlerManifestFile() {
-	content, err := os.ReadFile(manifestFile)
+	content, err := os.ReadFile(config.ManifestFile)
 	if err != nil {
 		finish(err)
 	}
 
 	params := unPackageManifestFile(content)
-	params["Main-Class"] = MainClass
-	if err := os.WriteFile(manifestFile, packageManifestFile(params), os.FileMode(0777)); err != nil {
+	params["Main-Class"] = config.MainClass
+	if err := os.WriteFile(config.ManifestFile, packageManifestFile(params), os.FileMode(0777)); err != nil {
 		finish(err)
 	}
 }
 
 // handlerSnowyLib 复制以snowy-开头的依赖到单独目录
 func handlerSnowyLib() error {
-	_ = os.RemoveAll(snowyLibDir)
-	if err := os.Mkdir(snowyLibDir, os.FileMode(07777)); err != nil {
+	_ = os.RemoveAll(config.SnowyLibDir)
+	if err := os.Mkdir(config.SnowyLibDir, os.FileMode(07777)); err != nil {
 		return err
 	}
 
-	return filepath.Walk(fmt.Sprintf("%s\\lib", jarDir), func(path string, fileInfo fs.FileInfo, err error) error {
+	return filepath.Walk(util.BuildFilePath(config.JarDir, "lib"), func(path string, fileInfo fs.FileInfo, err error) error {
 		fileName := fileInfo.Name()
 
 		if !fileInfo.IsDir() && len(fileName) >= 5 && fileInfo.Name()[0:5] == "snowy" {
-			newFileFd, err := os.OpenFile(fmt.Sprintf("%s\\%s\\%s", jarDir, SnowyLibDirName, fileInfo.Name()), os.O_CREATE|os.O_WRONLY, fileInfo.Mode())
+			newFileFd, err := os.OpenFile(util.BuildFilePath(config.FileSplit, config.JarDir, config.SnowyLibDirName, fileInfo.Name()),
+				os.O_CREATE|os.O_WRONLY, fileInfo.Mode())
 			if err != nil {
 				return err
 			}
@@ -123,32 +109,20 @@ func handlerSnowyLib() error {
 	})
 }
 
+//goland:noinspection GoBoolExpressions
 func main() {
-	SixZExeFile = fmt.Sprintf("%s\\7z.exe", util.GetCurrentExecuteDir())
-
-	if len(os.Args) == 1 {
-		panic(NotFoundFileError)
-	}
-
-	jarFile = os.Args[1]
-	index := strings.LastIndex(jarFile, "\\")
-	jarDir = jarFile[:index]
-	jarName := jarFile[index:]
-	manifestFile = fmt.Sprintf(ManifestFileSuffix, jarDir)
-	snowyLibDir = fmt.Sprintf("%s\\%s", jarDir, SnowyLibDirName)
-
-	fmt.Printf("input file: %s, name: %s, dir: %s\n", jarFile, jarName, jarDir)
+	fmt.Printf("input file: %s, name: %s, dir: %s\n", config.JarFile, config.JarName, config.JarDir)
 
 	// 检查是否存在冲突目录
 	clearDir([]string{})
 
 	// 解压jar
-	if err := util.Decompress(jarFile, jarDir); err != nil {
+	if err := util.Decompress(config.FileSplit, config.JarFile, config.JarDir); err != nil {
 		finish(err)
 	}
 
 	// 移动lib
-	if err := os.Rename(fmt.Sprintf(LibDirSuffix, jarDir), fmt.Sprintf("%s\\lib", jarDir)); err != nil {
+	if err := os.Rename(fmt.Sprintf(config.LibDirSuffix, config.JarDir), util.BuildFilePath(config.FileSplit, config.JarDir, "lib")); err != nil {
 		finish(err)
 	}
 
@@ -161,18 +135,18 @@ func main() {
 	handlerManifestFile()
 
 	// 打包
-	if err := util.Compress7z(SixZExeFile, func() []string {
+	if err := util.Compress7z(config.SixZExeFile, func() []string {
 		var params []string
-		for _, targetDirName := range TargetDirNameSlice {
+		for _, targetDirName := range config.TargetDirNameSlice {
 			if targetDirName == "lib" {
 				continue
 			}
 
-			params = append(params, fmt.Sprintf("%s\\%s", jarDir, targetDirName))
+			params = append(params, util.BuildFilePath(config.FileSplit, config.JarDir, targetDirName))
 		}
 
 		return params
-	}(), fmt.Sprintf("%s\\dc.jar", jarDir)); err != nil {
+	}(), util.BuildFilePath(config.FileSplit, config.JarDir, "dc.jar")); err != nil {
 		finish(err)
 	}
 

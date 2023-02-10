@@ -2,7 +2,6 @@ package util
 
 import (
 	"archive/zip"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -62,7 +61,7 @@ func Compress(sourceDirSlice []string, targetFile string) error {
 }
 
 // Decompress 解压ZIP文件到targetDir目录
-func Decompress(sourceFile, targetDir string) error {
+func Decompress(fileSplice, sourceFile, targetDir string) error {
 	reader, err := zip.OpenReader(sourceFile)
 
 	if err != nil {
@@ -72,7 +71,7 @@ func Decompress(sourceFile, targetDir string) error {
 	defer Close(reader)
 
 	for _, file := range reader.File {
-		filePath := fmt.Sprintf("%s\\%s", targetDir, file.Name)
+		filePath := BuildFilePath(fileSplice, targetDir, file.Name)
 
 		if file.FileInfo().IsDir() {
 			if err := os.MkdirAll(filePath, os.ModePerm); err != nil {
