@@ -97,7 +97,9 @@ func handlerSnowyLib() error {
 	}
 
 	return filepath.Walk(fmt.Sprintf("%s\\lib", jarDir), func(path string, fileInfo fs.FileInfo, err error) error {
-		if !fileInfo.IsDir() && fileInfo.Name()[0:5] == "snowy" {
+		fileName := fileInfo.Name()
+
+		if !fileInfo.IsDir() && len(fileName) >= 5 && fileInfo.Name()[0:5] == "snowy" {
 			newFileFd, err := os.OpenFile(fmt.Sprintf("%s\\%s\\%s", jarDir, SnowyLibDirName, fileInfo.Name()), os.O_CREATE|os.O_WRONLY, fileInfo.Mode())
 			if err != nil {
 				return err
